@@ -36,4 +36,4 @@ function parseLine(point: string): Line {
 
 const lines = getInput().split("\n").map(parseLine).filter(isHorOrVer);
 
-console.log(lines); 
+console.log(lines);
