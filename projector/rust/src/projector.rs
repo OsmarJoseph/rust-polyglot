@@ -1,11 +1,11 @@
+use anyhow::Result;
+
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
 };
 
 use serde::{Deserialize, Serialize};
-
-use crate::config::Config;
 
 #[derive(Debug, Serialize, Deserialize)]
 
@@ -14,7 +14,8 @@ struct Data {
 }
 
 pub struct Projector {
-    config: Config,
+    config_path: PathBuf,
+    pwd: PathBuf,
     data: Data,
 }
 
@@ -26,7 +27,7 @@ fn default_data() -> Data {
 
 impl Projector {
     pub fn get_value_all(&self) -> HashMap<&String, &String> {
-        let mut current = Some(self.config.pwd.as_path());
+        let mut current = Some(self.pwd.as_path());
         let mut paths: Vec<&Path> = vec![];
 
         while let Some(parent) = current {
@@ -45,18 +46,20 @@ impl Projector {
         return out;
     }
     pub fn set_value(&mut self, key: String, value: String) {
-        self.data.projector.get_mut(&self.config.pwd).map(|x| {
-            x.insert(key, value);
-        });
+        self.data
+            .projector
+            .entry(self.pwd.clone())
+            .or_default()
+            .insert(key, value);
     }
 
     pub fn remove_value(&mut self, key: &str) {
-        self.data.projector.get_mut(&self.config.pwd).map(|x| {
+        self.data.projector.get_mut(&self.pwd).map(|x| {
             x.remove(key);
         });
     }
     pub fn get_value(&self, key: &str) -> Option<&String> {
-        let mut current = Some(self.config.pwd.as_path());
+        let mut current = Some(self.pwd.as_path());
 
         let mut out = None;
 
@@ -73,18 +76,34 @@ impl Projector {
         return out;
     }
 
-    pub fn from_config(config: Config) -> Self {
-        if std::fs::exists(&config.config_path).is_ok() {
-            let contents = std::fs::read_to_string(&config.config_path)
+    pub fn save(&self) -> Result<()> {
+        if let Some(p) = self.config_path.parent() {
+            if !std::fs::exists(&p).is_ok() {
+                std::fs::create_dir_all(p)?
+            }
+        }
+
+        std::fs::write(&self.config_path, serde_json::to_string(&self.data)?)?;
+        Ok(())
+    }
+
+    pub fn from_config(config_path: PathBuf, pwd: PathBuf) -> Projector {
+        if std::fs::exists(&config_path).is_ok() {
+            let contents = std::fs::read_to_string(&config_path)
                 .unwrap_or("{ \"projector\": {} }".to_string());
 
             let data = serde_json::from_str(&contents).unwrap_or(default_data());
 
-            return Projector { config, data };
+            return Projector {
+                config_path,
+                pwd,
+                data,
+            };
         }
 
         return Projector {
-            config,
+            config_path,
+            pwd,
             data: default_data(),
         };
     }
@@ -95,8 +114,6 @@ mod test {
     use std::{collections::HashMap, path::PathBuf};
 
     use collection_macros::hashmap;
-
-    use crate::config::{Config, Operation};
 
     use super::{Data, Projector};
 
@@ -117,11 +134,8 @@ mod test {
 
     fn get_projector(pwd: PathBuf) -> Projector {
         return Projector {
-            config: Config {
-                pwd,
-                config_path: PathBuf::from(""),
-                operation: Operation::Print(None),
-            },
+            pwd,
+            config_path: PathBuf::from(""),
             data: Data {
                 projector: create_data(),
             },

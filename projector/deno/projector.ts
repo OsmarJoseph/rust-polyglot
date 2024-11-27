@@ -89,4 +89,16 @@ export class Projector {
       delete directoryData[key];
     }
   }
+
+  save() {
+    const configPath = path.dirname(this.config.configPath);
+    if (!existsSync(configPath)) {
+      Deno.mkdirSync(configPath, { recursive: true });
+    }
+
+    Deno.writeTextFileSync(
+      this.config.configPath,
+      JSON.stringify(this.data),
+    );
+  }
 }
